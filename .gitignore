@@ -1,0 +1,10 @@
+__pycache__
+.history
+token
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
+
+*.sqlite
+*.sqlitedb

@@ -21,6 +21,8 @@ from scrape_poe_wiki import get_lab_urls
 from enum import Enum
 from pathlib import Path
 import cloudscraper
+import unicodedata
+
 WIKI_BASE = 'https://www.poewiki.net/wiki/'
 abspath = os.path.abspath(__file__)
 dname = os.path.dirname(abspath)
@@ -97,6 +99,14 @@ QUAL_TO_EMOJI = {
     Quality.ANOMALOUS : 'Anomalous',
     Quality.DIVERGENT : 'Divergent',
     Quality.PHANTASMAL : 'Phantasmal'
+    }
+SELF_LEAGUE_TO_NINJA_LEAGUE = {
+    'tmpStandard':'challenge',
+    'tmpHardcore':'challengehc',
+    'eventStandard':'', # not sure what is ninja using for this
+    'eventHardcore':'', # not sure what is ninja using for this
+    'Standard':'standard',
+    'Hardcore':'hardcore'
     }
 class BotWithReactions(commands.Bot):
     DELETE_EMOJI = '\U0000274C'
@@ -667,7 +677,12 @@ def _create_currency_embed(data):
         stats_string = 'Est. Price: **{}**c\napprox. **{:.1f}**ex'.format(price, price/exaltValue)
     else:
         frac = Fraction(data['chaosValue']).limit_denominator(int(limit))
-        stats_string = 'Est. Price: **{}**c\napprox. **{}** : **{}**c'.format(price,frac.denominator,frac.numerator)
+        stats_string = 'Est. Price: **{}**c\napprox. **{}** : **{}**c\n[:ninja:](https://poe.ninja/{}/currency/{})  -  [:money_with_wings:](https://www.pathofexile.com/trade/search/?q={{%22query%22:{{%22type%22:%22{}%22}}}})'.format(
+            price,frac.denominator,frac.numerator, 
+            SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-'), 
+            urlparse.quote(data['name'])
+            # SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-'), 
+            )
     e = discord.Embed(url=f"{WIKI_BASE}{data['name'].replace(' ','_')}",
         description=_strip_html_tags(stats_string),
         title=data['name'].strip(),
@@ -719,7 +734,28 @@ def _create_unique_embed(data):
         stats_string+='Requires {}'.format(', '.join(reqs))
     stats_string+='{}'.format(if_not_zero(data['jewellimit'],'Limited To:'))
     stats_string+='{}'.format(if_not_zero(data['jewelradius'],'Radius:'))
+
     stats_string=bold_nums.sub(r'**\1**', stats_string).replace('****','')
+    ninja_item_name =  (data['name'].strip() +' '+ data['baseitem'].strip()).replace(' ','-').replace('\'','')
+    ninja_item_name = str(unicodedata.normalize('NFKD', ninja_item_name).encode("ascii", "ignore")).replace('b\'','').replace('\'','')
+    stats_string+='\n[:crossed_swords:](https://poe.ninja/{}/unique-weapons/{}) - '.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], ninja_item_name
+        )
+    stats_string+='[:boot:](https://poe.ninja/{}/unique-armours/{}) - '.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], ninja_item_name
+        )
+    stats_string+='[:ring:](https://poe.ninja/{}/unique-accessories/{}) - '.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], ninja_item_name
+        )
+    stats_string+='[:tropical_drink:](https://poe.ninja/{}/unique-flasks/{}) - '.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], ninja_item_name
+        )
+    stats_string+='[:gem:](https://poe.ninja/{}/unique-jewels/{})'.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], ninja_item_name
+        )
+    stats_string+='\n [:money_with_wings:](https://www.pathofexile.com/trade/search/?q={{%22query%22:{{%22filters%22:{{}},%22name%22:%22{}%22}}}})'.format(
+        urlparse.quote(data['name'].strip())
+        )
     e = discord.Embed(url=f"{WIKI_BASE}{data['name'].replace(' ','_')}",
         description=_strip_html_tags(stats_string),
         title='\n'.join((data['name'].strip(),data['baseitem'].strip())),
@@ -745,6 +781,7 @@ def _create_unique_embed(data):
         if data['eledps']:
             s+="Elemental DPS: {}".format(data['eledps'])
         e.set_footer(text=s)
+    
     return e
 
 def _create_gem_embed(data, quality=Quality.NORMAL):
@@ -834,6 +871,9 @@ def _create_gem_embed(data, quality=Quality.NORMAL):
     stats_string = bold_nums.sub(r'**\1**', stats_string.replace('<br>','\n')).replace('****','')
     if not stats_string:
         stats_string = '--'
+    stats_string+='[:ninja:](https://poe.ninja/{}/skill-gems/?name={})  -  [:money_with_wings:](https://www.pathofexile.com/trade/search/Sentinel?q={{%22query%22:{{%22filters%22:{{%22misc_filters%22:{{%22filters%22:{{%22gem_alternate_quality%22:{{%22option%22:%22{}%22}}}}}}}},%22type%22:%22{}%22}}}})'.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league'] or 'tmpStandard'], urlparse.quote(data['name']),quality._value_-1, urlparse.quote( data['name'])
+        )
     red = 0xc51e1e
     blue = 0x4163c9
     green = 0x08a842

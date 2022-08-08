@@ -449,7 +449,7 @@ POE_NINJA_FIELDS = ['id',
                     'chaosValue',
                     'exaltedValue',
                     ]
-                    
+DROP_6_LINKED_UNIQUES = ['Tabula Rasa','Skin of the Lords','Skin of the Loyal','The Goddess Unleashed','Oni-Goroshi','Shadowstitch']
 def get_ninja_prices(league='tmpStandard'):
         '''use poe.ninja api to get item prices'''
         endpoints = [('item','UniqueMap'),
@@ -481,7 +481,7 @@ def get_ninja_prices(league='tmpStandard'):
                     elif int(x['gemLevel'])==1 and int(x.get('gemQuality',0))==20:
                         # use 1/20 for normal gems
                         data.append({key:x[key] for key in POE_NINJA_FIELDS})
-                elif x['name'].strip() in ['Tabula Rasa','Skin of the Lords','Skin of the Loyal','The Goddess Unleashed','Oni-Goroshi','Shadowstitch']:
+                elif x['name'].strip() in DROP_6_LINKED_UNIQUES:
                     if int(x['links'])==6:
                         data.append({key:x[key] for key in POE_NINJA_FIELDS})
                 elif 'links' not in x or int(x['links'])==0:

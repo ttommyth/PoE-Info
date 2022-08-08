@@ -677,12 +677,26 @@ def _create_currency_embed(data):
         stats_string = 'Est. Price: **{}**c\napprox. **{:.1f}**ex'.format(price, price/exaltValue)
     else:
         frac = Fraction(data['chaosValue']).limit_denominator(int(limit))
-        stats_string = 'Est. Price: **{}**c\napprox. **{}** : **{}**c\n[:ninja:](https://poe.ninja/{}/currency/{})  -  [:money_with_wings:](https://www.pathofexile.com/trade/search/?q={{%22query%22:{{%22type%22:%22{}%22}}}})'.format(
-            price,frac.denominator,frac.numerator, 
-            SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-'), 
-            urlparse.quote(data['name'])
+        stats_string = 'Est. Price: **{}**c\napprox. **{}** : **{}**c'.format(
+            price,frac.denominator,frac.numerator
             # SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-'), 
             )
+    stats_string+='\n[:moneybag:](https://poe.ninja/{}/currency/{}) - '.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-')
+        )
+    stats_string+='[:jigsaw:](https://poe.ninja/{}/fragments/{}) - '.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-')
+        )
+    stats_string+='[:credit_card:](https://poe.ninja/{}/divination-cards/{}) - '.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-')
+        )
+    stats_string+='[:oil:](https://poe.ninja/{}/oils/{})'.format(
+        SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-')
+        )
+    stats_string += '\n[:ninja:](https://poe.ninja/{}/currency/{})  -  [:money_with_wings:](https://www.pathofexile.com/trade/search/?q={{%22query%22:{{%22type%22:%22{}%22}}}})'.format(
+            SELF_LEAGUE_TO_NINJA_LEAGUE[data['league']], data['name'].replace(' ','-'), 
+            urlparse.quote(data['name'])
+    )
     e = discord.Embed(url=f"{WIKI_BASE}{data['name'].replace(' ','_')}",
         description=_strip_html_tags(stats_string),
         title=data['name'].strip(),

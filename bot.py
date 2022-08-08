@@ -19,6 +19,7 @@ import math
 from urllib.parse import quote as urlquote
 from scrape_poe_wiki import get_lab_urls
 from enum import Enum
+from pathlib import Path
 import cloudscraper
 WIKI_BASE = 'https://www.poewiki.net/wiki/'
 abspath = os.path.abspath(__file__)
@@ -38,6 +39,8 @@ DIGIT_EMOJI = ['\U00000031\U000020E3',
                 '\U00000037\U000020E3',
                 '\U00000038\U000020E3',
                 '\U00000039\U000020E3']
+SEARCH_LIMIT = 999
+MAX_EMBED_VALUE_LEN = 1024
 class restrictedView(discord.ui.View):
     ephemeral_msg = False
     message = None
@@ -47,8 +50,9 @@ class restrictedView(discord.ui.View):
         return super().__init__(*args,timeout=MESSAGE_BUTTON_TIMEOUT,**kwargs)
     @discord.ui.button(style=discord.ButtonStyle.red,emoji='✖',custom_id="delete")
     async def delete_callback(self, button, interaction):
-        await interaction.response.defer()
-        await interaction.delete_original_message()
+        # await interaction.response.defer()
+        await self.message.delete()
+        # await interaction.delete_original_message()
     async def interaction_check(self, interaction):
         if interaction.user == self.ctx.message.author:
             return True
@@ -304,7 +308,9 @@ def admin_or_dm():
             return True
         raise commands.MissingPermissions('Administrator')
     return commands.check(predicate)
-bot = BotWithReactions(command_prefix='-', description='PoE Info.')
+intents = discord.Intents.default()
+intents.message_content = True
+bot = BotWithReactions(command_prefix='-', description='PoE Info.', intents = intents)
 
 @bot.listen()
 async def on_ready():
@@ -465,7 +471,7 @@ class Info(commands.Cog):
             if (len(itemname) + (ctx.invoked_with == 'us'))<2:
                 await bot.send_message(ctx.message.channel, 'usage: -us <key words>')
                 return
-            data = bot.db.unique_search_explicit(itemname[(ctx.invoked_with != 'us'):],league,limit=999)
+            data = bot.db.unique_search_explicit(itemname[(ctx.invoked_with != 'us'):],league,limit=SEARCH_LIMIT)
             if not data:
                 await bot.send_failure_message(ctx.message.channel)
                 return
@@ -476,9 +482,9 @@ class Info(commands.Cog):
             e = _create_unique_embed(data[0])
             await bot.send_deletable_message(ctx, ctx.message.channel, embed=e)
             return
-        data = bot.db.get_data('unique_items',item,league)
+        data = bot.db.get_data('unique_items',item,league,limit=SEARCH_LIMIT)
         if not data:
-            data = bot.db.get_data('unique_items',item,league,search_by_baseitem=True)
+            data = bot.db.get_data('unique_items',item,league,search_by_baseitem=True,limit=SEARCH_LIMIT)
             if not data:
                 await bot.send_failure_message(ctx.message.channel)
                 return
@@ -546,7 +552,7 @@ class Info(commands.Cog):
         item = ' '.join(skill_name)
         r=bot.cursor.execute('SELECT league FROM pricecheck WHERE channel=?',(ctx.message.channel.id,))
         league = (r.fetchone() or ('tmpStandard',))[0]
-        data = bot.db.get_data('skill_gems',item,league)
+        data = bot.db.get_data('skill_gems',item,league,limit=SEARCH_LIMIT)
         if not data:
             await bot.send_failure_message(ctx.message.channel)
             return
@@ -597,7 +603,7 @@ class Info(commands.Cog):
         item = ' '.join(currency_name)
         r=bot.cursor.execute('SELECT league FROM pricecheck WHERE channel=?',(ctx.message.channel.id,))
         league = (r.fetchone() or ('tmpStandard',))[0]
-        data = bot.db.get_currency(item,league)
+        data = bot.db.get_currency(item,league,limit=SEARCH_LIMIT)
         if not data:
             await bot.send_failure_message(ctx.message.channel)
             return
@@ -620,7 +626,7 @@ class Info(commands.Cog):
             if (len(skillname) + (ctx.invoked_with.endswith('s')))<2:
                 await bot.send_message(ctx.message.channel, 'usage: -ns <key words>')
                 return
-            data = bot.db.passive_search_description(skillname[(not ctx.invoked_with.endswith('s')):])
+            data = bot.db.passive_search_description(skillname[(not ctx.invoked_with.endswith('s')):],limit=SEARCH_LIMIT)
             if not data:
                 await bot.send_failure_message(ctx.message.channel)
                 return
@@ -631,7 +637,7 @@ class Info(commands.Cog):
             await bot.send_deletable_message(ctx, ctx.message.channel, embed=e)
             return
         
-        data = bot.db.get_data('passive_skills',name)
+        data = bot.db.get_data('passive_skills',name,limit=SEARCH_LIMIT)
         if not data:
             await bot.send_failure_message(ctx.message.channel)
             return
@@ -654,7 +660,7 @@ def _strip_html_tags(text):
     
 def _create_currency_embed(data):
     price = data['chaosValue']
-    exaltValue = bot.db.get_currency('Exalted Orb',data['league'], exact=True)[0]['chaosValue']
+    exaltValue = bot.db.get_currency('Exalted Orb',data['league'], exact=True,limit=SEARCH_LIMIT)[0]['chaosValue']
     chaos_to_spend = 20
     limit = math.ceil(chaos_to_spend/price)
     if data['chaosValue'] > exaltValue * 2:
@@ -731,7 +737,7 @@ def _create_unique_embed(data):
             expl_text = '{}'.format(table_header.group(1))
         else:
             expl_text = (_strip_html_tags(bold_nums.sub(r'**\1**', expl_mods)) or '--')
-        e.add_field(name=(_strip_html_tags(bold_nums.sub(r'**\1**', str(data['impl']))) or '--').replace('****',''),value=expl_text.replace('****',''),inline=False)
+        e.add_field(name=(_strip_html_tags(bold_nums.sub(r'**\1**', str(data['impl']))) or '--').replace('****',''),value=expl_text.replace('****','')[:MAX_EMBED_VALUE_LEN],inline=False)
     if data['physdps'] or data['eledps']:
         s=''
         if data['physdps']:
@@ -1013,6 +1019,8 @@ class backgroundTasks(commands.Cog):
     async def before_run(self):
         await self.bot.wait_until_ready()
         
+
+        
 if __name__ =='__main__':
     bot.db = db.PoeDB(ro=True)
     bot.conn = sqlite3.connect('announce.sqlitedb')
@@ -1051,14 +1059,20 @@ if __name__ =='__main__':
              (channel int PRIMARY KEY,
              league text)''')
     bot.conn.commit()
-    import cogs
-    from cogs import *
-    cogs.setup_all_cogs(bot)
-    bot.add_cog(Alerts())
-    bot.add_cog(Info())
-    bot.add_cog(Misc())
-    bot.add_cog(backgroundTasks(bot))
-    with open('token','r') as f:
-        bot.run(f.read())
+
+    async def load_extensions():
+        await bot.add_cog(Alerts())
+        await bot.add_cog(Info())
+        await bot.add_cog(Misc())
+        await bot.add_cog(backgroundTasks(bot))
+        for path in Path("./cogs").glob('*.py'):
+            await bot.load_extension(f"cogs.{path.stem}")
+
+    async def main():
+        async with bot:
+            await load_extensions()
+            with open('token','r') as f:
+                await bot.start(f.read())
+    asyncio.run(main())
 
 ##https://discord.com/oauth2/authorize?client_id=313788924151726082&scope=bot&permissions=0

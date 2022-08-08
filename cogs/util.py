@@ -12,6 +12,7 @@ DISCORD_PIN_LIMIT = 50
 def parse_longest_substr_time(txt: str, settings: dict):
     dt, msg = None, txt
     tokens = re.split('(\s)', txt)
+    settings['RETURN_AS_TIMEZONE_AWARE']= True
     if len(tokens)<3:
         return dt,msg # input is too short
     for i in range(1,len(tokens),2):
@@ -19,9 +20,10 @@ def parse_longest_substr_time(txt: str, settings: dict):
         tmpdt = parse(substr, settings = settings)
         if not tmpdt:
             continue
-        if tmpdt < datetime.datetime.utcnow():
-            diff = datetime.datetime.utcnow() - tmpdt
-            tmpdt = datetime.datetime.utcnow() + diff
+        utcts = datetime.datetime.now(datetime.timezone.utc)
+        if tmpdt < utcts:
+            diff = utcts - tmpdt
+            tmpdt = utcts + diff
         dt = tmpdt
         msg = ''.join(tokens[i+1:])
     return dt, msg
@@ -40,8 +42,11 @@ class Utility(commands.Cog):
         for row in r.fetchall():
             'announce and delete.'
             try:
-                await self.bot.send_message(self.bot.get_channel(row[2]), '<@{}> {}'.format(row[0],row[5]),code_block=False)
-            except:
+                ch_id = self.bot.get_channel(row[2]) 
+                if not ch_id:
+                    ch_id = await self.bot.fetch_channel(row[2])
+                await self.bot.send_message(ch_id, '<@{}> {}'.format(row[0],row[5]),code_block=False)
+            except Exception as e:
                 'channel missing or bot is blocked'
             finally:
                 try:
@@ -158,15 +163,15 @@ class Utility(commands.Cog):
         settings = {'TIMEZONE':(r and r[0]) or 'UTC', 'TO_TIMEZONE':'UTC', 'PREFER_DATES_FROM': 'future'}
         disp_settings = {'TO_TIMEZONE':(r and r[0]) or 'UTC', 'TIMEZONE':'UTC', 'PREFER_DATES_FROM': 'future'}
         if subcmd in ('list','-l'):
-            r = self.bot.cursor.execute('SELECT message,datetime FROM reminders where creator = ? and server = ? ORDER by datetime ASC',(ctx.message.author.id,server_id))
+            r = self.bot.cursor.execute('SELECT message, strftime("%s",datetime) FROM reminders where creator = ? and server = ? ORDER by datetime ASC',(ctx.message.author.id,server_id))
             res = r.fetchall()
             if not res:
                 await self.bot.send_message(ctx.message.channel, 'You have 0 reminders.')
                 return
             p = ''
             for i,r in enumerate(res):
-                p+= '{}. "{}" on {}\n'.format(i,r[0],parse(r[1],settings = disp_settings).strftime(time_display_format))
-            await self.bot.send_message(ctx.message.channel, p)
+                p+= '{}. <t:{}:f>: {}\n'.format(i,r[1],r[0])
+            await self.bot.send_message(ctx.message.channel, p, code_block=False)
         elif subcmd in ('delete','del'):
             if len(query)<2 or not re.match('^\d*$',query[1]):
                 await self.bot.send_message(ctx.message.channel, 'usage:\n-reminder del <index>')
@@ -206,15 +211,12 @@ class Utility(commands.Cog):
             if not date:
                 await self.bot.send_message(ctx.message.channel, 'Could not find a time or date in your message, try being more specific. For example, use "in 10 days" instead of "10 days" or "5 minutes" instead of "5m".')
                 return
-            if date.tzinfo:
-                await self.bot.send_message(ctx.message.channel, 'timezone argument not (currently) supported, set global timezone for this server with -reminder timezone <tz>')
-                return
-            if date <= datetime.datetime.utcnow():
-                await self.bot.send_message(ctx.message.channel, 'Given date ({}) has already passed, try being more specific.'.format(date))
+            if date <= datetime.datetime.now(datetime.timezone.utc):
+                await self.bot.send_message(ctx.message.channel, 'Given date (<t:{}:f>) has already passed, try being more specific.'.format(int(date.timestamp())),code_block=False)
                 return
             self.bot.cursor.execute('REPLACE INTO reminders(creator,server,channel,datetime,message) VALUES(?,?,?,?,?)',(ctx.message.author.id,server_id,ctx.message.channel.id,date,msg))
             self.bot.conn.commit()
-            await self.bot.send_message(ctx.message.channel, 'reminder set for {}'.format(parse(date.strftime("%Y-%m-%d %H:%M:%S.%f"),settings = disp_settings).strftime(time_display_format)))
+            await self.bot.send_message(ctx.message.channel, 'Reminder set for <t:{}:f>'.format(int(date.timestamp())),code_block = False)
         else:
             await self.bot.send_message(ctx.message.channel, helpmsg)
         return
@@ -224,12 +226,12 @@ class Utility(commands.Cog):
         thumb = None
         if pin.embeds:
             emb = pin.embeds[0]
-            if emb.thumbnail != discord.Embed.Empty:
+            if emb.thumbnail != None:
                 thumb = emb.thumbnail.url
             if not content:
-                if emb.title != discord.Embed.Empty:
+                if emb.title != None:
                     content = emb.title
-                elif emb.description != discord.Embed.Empty:
+                elif emb.description != None:
                     content = emb.description
         e = discord.Embed(
             description=content,
@@ -250,7 +252,7 @@ class Utility(commands.Cog):
         e.set_footer(text='#{}'.format(pin.channel.name))
         return e
 
-def setup(bot):
+async def setup(bot):
     bot.cursor.execute('''CREATE TABLE IF NOT EXISTS pins
              (source int PRIMARY KEY,
              dest int)''')
@@ -267,4 +269,4 @@ def setup(bot):
              (server int PRIMARY KEY,
              timezone text DEFAULT "UTC")''')
     bot.conn.commit()
-    bot.add_cog(Utility(bot))
+    await bot.add_cog(Utility(bot))
